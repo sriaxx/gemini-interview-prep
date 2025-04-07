@@ -88,7 +88,23 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         password,
       });
 
-      if (error) throw error;
+      if (error) {
+        // Special handling for email confirmation error
+        if (error.message.includes("Email not confirmed")) {
+          toast.error("Please confirm your email before logging in. Check your inbox for a verification link.");
+          
+          // Optionally resend confirmation email
+          await supabase.auth.resend({
+            type: 'signup',
+            email,
+          });
+          
+          toast.info("A new confirmation email has been sent to your inbox.");
+          throw new Error("Email not confirmed. Please check your inbox.");
+        } else {
+          throw error;
+        }
+      }
       
       console.log("Login successful:", data);
       toast.success("Logged in successfully!");
@@ -106,7 +122,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     try {
       setLoading(true);
       
-      // First create the auth user
+      // Create the auth user with auto-confirmation disabled
       const { data, error } = await supabase.auth.signUp({
         email,
         password,
@@ -114,13 +130,21 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           data: {
             name,
           },
+          // Don't auto-confirm email - this relies on Supabase settings
+          emailRedirectTo: window.location.origin + '/login',
         },
       });
 
       if (error) throw error;
       
       console.log("Signup successful:", data);
-      toast.success("Account created successfully!");
+      
+      // Check if email confirmation is required
+      if (data?.user && !data?.session) {
+        toast.success("Account created! Please check your email to confirm your account before logging in.");
+      } else {
+        toast.success("Account created successfully!");
+      }
       
     } catch (error: any) {
       console.error("Signup error:", error);

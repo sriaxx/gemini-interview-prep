@@ -1,4 +1,3 @@
-
 import React, { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { useAuth } from "@/context/AuthContext";
@@ -8,6 +7,8 @@ import { Label } from "@/components/ui/label";
 import { Loader2 } from "lucide-react";
 import Navbar from "@/components/Navbar";
 import Footer from "@/components/Footer";
+import { toast } from "sonner";
+import supabase from "@/lib/supabase";
 
 const Login: React.FC = () => {
   const navigate = useNavigate();
@@ -18,8 +19,8 @@ const Login: React.FC = () => {
     password: ""
   });
   const [errorMsg, setErrorMsg] = useState("");
+  const [showEmailConfirmation, setShowEmailConfirmation] = useState(false);
 
-  // Redirect if already authenticated
   React.useEffect(() => {
     if (isAuthenticated) {
       navigate("/dashboard");
@@ -31,22 +32,50 @@ const Login: React.FC = () => {
       ...formData,
       [e.target.name]: e.target.value
     });
-    // Clear error message when user types
     setErrorMsg("");
+    setShowEmailConfirmation(false);
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
     setErrorMsg("");
+    setShowEmailConfirmation(false);
     
     try {
       await login(formData.email, formData.password);
       navigate("/dashboard");
     } catch (error: any) {
-      // Error toast is handled in the auth context
       console.error("Login error:", error);
-      setErrorMsg(error.message || "Login failed. Please check your credentials.");
+      if (error.message?.includes("Email not confirmed")) {
+        setShowEmailConfirmation(true);
+      } else {
+        setErrorMsg(error.message || "Login failed. Please check your credentials.");
+      }
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleResendConfirmation = async () => {
+    if (!formData.email) {
+      setErrorMsg("Please enter your email address to resend confirmation");
+      return;
+    }
+    
+    setLoading(true);
+    try {
+      const { error } = await supabase.auth.resend({
+        type: 'signup',
+        email: formData.email,
+      });
+      
+      if (error) throw error;
+      
+      toast.success("Confirmation email has been resent. Please check your inbox.");
+    } catch (error: any) {
+      console.error("Error resending confirmation:", error);
+      setErrorMsg(error.message || "Failed to resend confirmation email");
     } finally {
       setLoading(false);
     }
@@ -90,7 +119,25 @@ const Login: React.FC = () => {
                   onChange={handleChange}
                 />
               </div>
-              {errorMsg && (
+              
+              {showEmailConfirmation && (
+                <div className="bg-amber-50 border border-amber-200 text-amber-700 p-3 rounded-md">
+                  <p className="font-medium">Email not confirmed</p>
+                  <p className="text-sm mt-1">Please check your inbox for a verification link before logging in.</p>
+                  <Button 
+                    type="button" 
+                    variant="outline"
+                    size="sm"
+                    className="mt-2"
+                    onClick={handleResendConfirmation}
+                    disabled={loading}
+                  >
+                    Resend confirmation email
+                  </Button>
+                </div>
+              )}
+              
+              {errorMsg && !showEmailConfirmation && (
                 <div className="text-red-500 text-sm py-2">
                   {errorMsg}
                 </div>
