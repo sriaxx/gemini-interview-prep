@@ -26,6 +26,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       // Listen for auth changes
       const { data: { subscription } } = supabase.auth.onAuthStateChange(
         async (event, session) => {
+          console.log("Auth state changed:", event, session);
           if (session) {
             await setUserFromSession(session);
           } else {
@@ -50,22 +51,32 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     if (!session.user) return;
 
     const { id, email, created_at } = session.user;
+    console.log("Setting user from session:", session.user);
     
-    // Get user profile data if it exists
-    const { data: profileData } = await supabase
-      .from('profiles')
-      .select('name')
-      .eq('id', id)
-      .single();
-    
-    const user: User = {
-      id,
-      email: email || '',
-      name: profileData?.name || email?.split('@')[0] || '',
-      createdAt: new Date(created_at)
-    };
-    
-    setUser(user);
+    try {
+      // Get user profile data if it exists
+      const { data: profileData, error } = await supabase
+        .from('profiles')
+        .select('name')
+        .eq('id', id)
+        .single();
+      
+      if (error) {
+        console.error("Error fetching profile:", error);
+      }
+      
+      const user: User = {
+        id,
+        email: email || '',
+        name: profileData?.name || email?.split('@')[0] || '',
+        createdAt: new Date(created_at)
+      };
+      
+      console.log("User set:", user);
+      setUser(user);
+    } catch (error) {
+      console.error("Error in setUserFromSession:", error);
+    }
   };
 
   const login = async (email: string, password: string) => {
@@ -78,12 +89,13 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       });
 
       if (error) throw error;
-
+      
+      console.log("Login successful:", data);
       toast.success("Logged in successfully!");
       
     } catch (error: any) {
-      toast.error(error.message || "Login failed. Please check your credentials.");
       console.error("Login error:", error);
+      toast.error(error.message || "Login failed. Please check your credentials.");
       throw error;
     } finally {
       setLoading(false);
@@ -106,16 +118,13 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       });
 
       if (error) throw error;
-
-      // Success message
+      
+      console.log("Signup successful:", data);
       toast.success("Account created successfully!");
       
-      // The profile will be created automatically via the database trigger
-      // No need to manually create the profile
-      
     } catch (error: any) {
-      toast.error(error.message || "Sign up failed. Please try again.");
       console.error("Signup error:", error);
+      toast.error(error.message || "Sign up failed. Please try again.");
       throw error;
     } finally {
       setLoading(false);
@@ -133,8 +142,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       toast.success("Logged out successfully!");
       
     } catch (error: any) {
-      toast.error(error.message || "Logout failed. Please try again.");
       console.error("Logout error:", error);
+      toast.error(error.message || "Logout failed. Please try again.");
     } finally {
       setLoading(false);
     }
