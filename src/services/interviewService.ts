@@ -7,11 +7,10 @@ import {
   InterviewSession,
   ApiResponse
 } from '@/types';
+import supabase from '@/lib/supabase';
+import { toast } from "sonner";
 
-// Mock storage keys
-const SESSIONS_STORAGE_KEY = 'interview_sessions';
-
-// Mock data for demonstration purposes
+// Function to generate questions using keywords (temporary mock)
 const mockKeywords: Record<string, string[]> = {
   "react": ["components", "hooks", "state", "props", "virtual DOM", "jsx", "react router", "context", "redux"],
   "javascript": ["closures", "promises", "async/await", "prototypes", "ES6", "map", "filter", "arrow functions"],
@@ -22,23 +21,7 @@ const mockKeywords: Record<string, string[]> = {
   "system design": ["scalability", "reliability", "availability", "performance", "security", "microservices"],
 };
 
-// Get sessions from localStorage
-const getSessions = (): InterviewSession[] => {
-  try {
-    const sessions = localStorage.getItem(SESSIONS_STORAGE_KEY);
-    return sessions ? JSON.parse(sessions) : [];
-  } catch (error) {
-    console.error("Error retrieving sessions:", error);
-    return [];
-  }
-};
-
-// Save sessions to localStorage
-const saveSessions = (sessions: InterviewSession[]): void => {
-  localStorage.setItem(SESSIONS_STORAGE_KEY, JSON.stringify(sessions));
-};
-
-// Mock session creation
+// Create a new interview session
 export const createInterview = async (
   userId: string, 
   setup: InterviewSetup
@@ -46,26 +29,34 @@ export const createInterview = async (
   try {
     // In a real app, this would call Gemini API to generate questions
     // For now, we'll use mock questions based on the job title and tech stack
-    await new Promise(resolve => setTimeout(resolve, 1500)); // Simulating API delay
+    const questions = generateMockQuestions(setup);
     
-    const session: InterviewSession = {
-      id: `session_${Date.now()}`,
+    const newSession: Omit<InterviewSession, 'id' | 'createdAt'> = {
       userId,
       setup,
-      questions: generateMockQuestions(setup),
+      questions,
       status: 'created',
-      createdAt: new Date(),
     };
     
-    // Save to localStorage
-    const sessions = getSessions();
-    sessions.push(session);
-    saveSessions(sessions);
+    // Insert new session into Supabase
+    const { data, error } = await supabase
+      .from('interview_sessions')
+      .insert(newSession)
+      .select()
+      .single();
+    
+    if (error) throw error;
+    
+    // Convert the returned data to proper InterviewSession type
+    const session: InterviewSession = {
+      ...data,
+      createdAt: new Date(data.createdAt),
+    };
     
     return { data: session };
-  } catch (error) {
+  } catch (error: any) {
     console.error("Error creating interview:", error);
-    return { error: "Failed to create interview session. Please try again." };
+    return { error: error.message || "Failed to create interview session. Please try again." };
   }
 };
 
@@ -74,7 +65,7 @@ const generateMockQuestions = (setup: InterviewSetup): Question[] => {
   const { jobTitle, techStack } = setup;
   const questions: Question[] = [];
   
-  // Generate 5 technical questions based on tech stack
+  // Generate technical questions based on tech stack
   techStack.forEach((tech, index) => {
     if (index < 3) { // Limit to 3 tech stack questions
       questions.push({
@@ -121,38 +112,42 @@ export const submitAnswers = async (
   answers: Answer[]
 ): Promise<ApiResponse<InterviewSession>> => {
   try {
-    // Simulate API delay
-    await new Promise(resolve => setTimeout(resolve, 2000));
+    // Get the current session
+    const { data: session, error: sessionError } = await supabase
+      .from('interview_sessions')
+      .select('*')
+      .eq('id', sessionId)
+      .single();
     
-    // Find the session
-    const sessions = getSessions();
-    const sessionIndex = sessions.findIndex(s => s.id === sessionId);
-    
-    if (sessionIndex === -1) {
-      return { error: "Interview session not found" };
-    }
-    
-    const session = sessions[sessionIndex];
+    if (sessionError) throw sessionError;
     
     // Generate feedback
     const feedback = generateMockFeedback(session.questions, answers);
     
-    // Update session
+    // Update session with answers and feedback
+    const { data, error } = await supabase
+      .from('interview_sessions')
+      .update({
+        answers,
+        feedback,
+        status: 'completed'
+      })
+      .eq('id', sessionId)
+      .select()
+      .single();
+    
+    if (error) throw error;
+    
+    // Convert the returned data to proper InterviewSession type
     const updatedSession: InterviewSession = {
-      ...session,
-      answers,
-      feedback,
-      status: 'completed',
+      ...data,
+      createdAt: new Date(data.createdAt),
     };
     
-    // Save updated session
-    sessions[sessionIndex] = updatedSession;
-    saveSessions(sessions);
-    
     return { data: updatedSession };
-  } catch (error) {
+  } catch (error: any) {
     console.error("Error submitting answers:", error);
-    return { error: "Failed to submit answers. Please try again." };
+    return { error: error.message || "Failed to submit answers. Please try again." };
   }
 };
 
@@ -201,23 +196,68 @@ const generateMockFeedback = (questions: Question[], answers: Answer[]): Feedbac
 };
 
 // Get session by ID
-export const getInterviewSession = (sessionId: string): InterviewSession | undefined => {
-  const sessions = getSessions();
-  return sessions.find(s => s.id === sessionId);
+export const getInterviewSession = async (sessionId: string): Promise<InterviewSession | undefined> => {
+  try {
+    const { data, error } = await supabase
+      .from('interview_sessions')
+      .select('*')
+      .eq('id', sessionId)
+      .single();
+    
+    if (error) throw error;
+    
+    // Convert the returned data to proper InterviewSession type
+    return {
+      ...data,
+      createdAt: new Date(data.createdAt),
+    };
+  } catch (error) {
+    console.error("Error retrieving session:", error);
+    return undefined;
+  }
 };
 
 // Get all sessions for a user
-export const getUserInterviewSessions = (userId: string): InterviewSession[] => {
-  const sessions = getSessions();
-  return sessions.filter(s => s.userId === userId);
+export const getUserInterviewSessions = async (userId: string): Promise<InterviewSession[]> => {
+  try {
+    const { data, error } = await supabase
+      .from('interview_sessions')
+      .select('*')
+      .eq('userId', userId)
+      .order('createdAt', { ascending: false });
+    
+    if (error) throw error;
+    
+    // Convert the returned data to proper InterviewSession type
+    return data.map(session => ({
+      ...session,
+      createdAt: new Date(session.createdAt),
+    }));
+  } catch (error) {
+    console.error("Error retrieving user sessions:", error);
+    return [];
+  }
 };
 
 // Initialize with sample data if needed (for development)
-export const initializeWithSampleData = (userId: string): void => {
-  const sessions = getSessions();
-  if (sessions.length === 0) {
-    const sampleSession: InterviewSession = {
-      id: `sample_session_${Date.now()}`,
+export const initializeWithSampleData = async (userId: string): Promise<void> => {
+  try {
+    // Check if user has any sessions
+    const { data: existingSessions, error: checkError } = await supabase
+      .from('interview_sessions')
+      .select('id')
+      .eq('userId', userId)
+      .limit(1);
+    
+    if (checkError) throw checkError;
+    
+    // If user already has sessions, don't create a sample
+    if (existingSessions && existingSessions.length > 0) {
+      return;
+    }
+    
+    // Create a sample session
+    const sampleSession = {
       userId,
       setup: {
         jobTitle: "Frontend Developer",
@@ -238,10 +278,15 @@ export const initializeWithSampleData = (userId: string): void => {
         }
       ],
       status: 'created',
-      createdAt: new Date()
     };
     
-    sessions.push(sampleSession);
-    saveSessions(sessions);
+    const { error: insertError } = await supabase
+      .from('interview_sessions')
+      .insert(sampleSession);
+    
+    if (insertError) throw insertError;
+    
+  } catch (error) {
+    console.error("Error creating sample data:", error);
   }
 };

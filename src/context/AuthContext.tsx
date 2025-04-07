@@ -2,59 +2,87 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import { User, AuthContextType } from '@/types';
 import { toast } from "sonner";
+import supabase from '@/lib/supabase';
+import { Session } from '@supabase/supabase-js';
 
 // Create a context
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
-
-// Mock auth data in localStorage until we connect to Supabase
-const AUTH_STORAGE_KEY = 'interview_prep_auth';
 
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState<boolean>(true);
 
-  // Load user from localStorage on initial render
+  // Initialize auth state from Supabase session
   useEffect(() => {
-    const loadUser = () => {
-      const storedUser = localStorage.getItem(AUTH_STORAGE_KEY);
-      if (storedUser) {
-        try {
-          setUser(JSON.parse(storedUser));
-        } catch (e) {
-          localStorage.removeItem(AUTH_STORAGE_KEY);
-        }
+    const initializeAuth = async () => {
+      setLoading(true);
+
+      // Check for existing session
+      const { data: { session } } = await supabase.auth.getSession();
+      if (session) {
+        await setUserFromSession(session);
       }
+
+      // Listen for auth changes
+      const { data: { subscription } } = supabase.auth.onAuthStateChange(
+        async (event, session) => {
+          if (session) {
+            await setUserFromSession(session);
+          } else {
+            setUser(null);
+          }
+          setLoading(false);
+        }
+      );
+
       setLoading(false);
+      
+      // Cleanup subscription on unmount
+      return () => {
+        subscription.unsubscribe();
+      };
     };
-    
-    loadUser();
+
+    initializeAuth();
   }, []);
 
-  // Mock authentication functions (to be replaced with Supabase)
+  const setUserFromSession = async (session: Session) => {
+    if (!session.user) return;
+
+    const { id, email, created_at } = session.user;
+    
+    // Get user profile data if it exists
+    const { data: profileData } = await supabase
+      .from('profiles')
+      .select('name')
+      .eq('id', id)
+      .single();
+    
+    const user: User = {
+      id,
+      email: email || '',
+      name: profileData?.name || email?.split('@')[0] || '',
+      createdAt: new Date(created_at)
+    };
+    
+    setUser(user);
+  };
+
   const login = async (email: string, password: string) => {
     try {
       setLoading(true);
       
-      // Mock login - in real app, this would be a Supabase call
-      // Simulating server delay
-      await new Promise(resolve => setTimeout(resolve, 1000));
-      
-      // For demo purposes - any email/password combination will work
-      // This should be replaced with actual authentication
-      const mockUser: User = {
-        id: `user_${Math.random().toString(36).substring(2, 9)}`,
-        email: email,
-        name: email.split('@')[0],
-        createdAt: new Date(),
-      };
-      
-      // Save to localStorage for persistence
-      localStorage.setItem(AUTH_STORAGE_KEY, JSON.stringify(mockUser));
-      setUser(mockUser);
+      const { data, error } = await supabase.auth.signInWithPassword({
+        email,
+        password,
+      });
+
+      if (error) throw error;
+
       toast.success("Logged in successfully!");
       
-    } catch (error) {
-      toast.error("Login failed. Please check your credentials.");
+    } catch (error: any) {
+      toast.error(error.message || "Login failed. Please check your credentials.");
       console.error("Login error:", error);
       throw error;
     } finally {
@@ -66,25 +94,35 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     try {
       setLoading(true);
       
-      // Mock signup - in real app, this would be a Supabase call
-      // Simulating server delay
-      await new Promise(resolve => setTimeout(resolve, 1000));
+      const { data, error } = await supabase.auth.signUp({
+        email,
+        password,
+        options: {
+          data: {
+            name,
+          },
+        },
+      });
+
+      if (error) throw error;
+
+      // Create a profile entry for the user
+      if (data.user) {
+        const { error: profileError } = await supabase
+          .from('profiles')
+          .insert([
+            { id: data.user.id, name, email },
+          ]);
+
+        if (profileError) {
+          console.error("Error creating profile:", profileError);
+        }
+      }
+
+      toast.success("Account created successfully! Please check your email for verification.");
       
-      // For demo purposes - create a mock user
-      const mockUser: User = {
-        id: `user_${Math.random().toString(36).substring(2, 9)}`,
-        email: email,
-        name: name,
-        createdAt: new Date(),
-      };
-      
-      // Save to localStorage for persistence
-      localStorage.setItem(AUTH_STORAGE_KEY, JSON.stringify(mockUser));
-      setUser(mockUser);
-      toast.success("Account created successfully!");
-      
-    } catch (error) {
-      toast.error("Sign up failed. Please try again.");
+    } catch (error: any) {
+      toast.error(error.message || "Sign up failed. Please try again.");
       console.error("Signup error:", error);
       throw error;
     } finally {
@@ -96,13 +134,14 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     try {
       setLoading(true);
       
-      // Mock logout - in real app, this would be a Supabase call
-      localStorage.removeItem(AUTH_STORAGE_KEY);
+      const { error } = await supabase.auth.signOut();
+      if (error) throw error;
+      
       setUser(null);
       toast.success("Logged out successfully!");
       
-    } catch (error) {
-      toast.error("Logout failed. Please try again.");
+    } catch (error: any) {
+      toast.error(error.message || "Logout failed. Please try again.");
       console.error("Logout error:", error);
     } finally {
       setLoading(false);

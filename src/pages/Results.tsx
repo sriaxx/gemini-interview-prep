@@ -31,10 +31,10 @@ const Results: React.FC = () => {
   useEffect(() => {
     if (!sessionId) return;
 
-    const loadSession = () => {
+    const loadSession = async () => {
       setLoading(true);
       try {
-        const interviewSession = getInterviewSession(sessionId);
+        const interviewSession = await getInterviewSession(sessionId);
         
         if (!interviewSession) {
           toast.error("Interview session not found");

@@ -31,10 +31,10 @@ const Dashboard: React.FC = () => {
       setLoading(true);
       try {
         // Initialize with sample data if no sessions exist
-        initializeWithSampleData(user.id);
+        await initializeWithSampleData(user.id);
         
         // Get all user sessions
-        const userSessions = getUserInterviewSessions(user.id);
+        const userSessions = await getUserInterviewSessions(user.id);
         setSessions(userSessions);
       } catch (error) {
         console.error("Error loading sessions:", error);

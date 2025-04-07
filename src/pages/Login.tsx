@@ -104,9 +104,6 @@ const Login: React.FC = () => {
               </p>
             </div>
           </form>
-          <div className="text-center mt-4 text-sm text-gray-500">
-            <p>For demo purposes, any email/password will work</p>
-          </div>
         </div>
       </div>
       <Footer />
