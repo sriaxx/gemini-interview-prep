@@ -2,8 +2,7 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import { User, AuthContextType } from '@/types';
 import { toast } from "sonner";
-import supabase from '@/lib/supabase';
-import { Session } from '@supabase/supabase-js';
+import api from '@/lib/api';
 
 // Create a context
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -12,107 +11,73 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState<boolean>(true);
 
-  // Initialize auth state from Supabase session
+  // Initialize auth state from stored token
   useEffect(() => {
     const initializeAuth = async () => {
       setLoading(true);
-
-      // Check for existing session
-      const { data: { session } } = await supabase.auth.getSession();
-      if (session) {
-        await setUserFromSession(session);
-      }
-
-      // Listen for auth changes
-      const { data: { subscription } } = supabase.auth.onAuthStateChange(
-        async (event, session) => {
-          console.log("Auth state changed:", event, session);
-          if (session) {
-            await setUserFromSession(session);
-          } else {
-            setUser(null);
-          }
-          setLoading(false);
-        }
-      );
-
-      setLoading(false);
       
-      // Cleanup subscription on unmount
-      return () => {
-        subscription.unsubscribe();
-      };
+      const token = localStorage.getItem('token');
+      if (token) {
+        try {
+          // Verify token by fetching user data
+          const response = await api.get('/auth/me');
+          const userData = response.data;
+          
+          setUser({
+            id: userData.id,
+            email: userData.email,
+            name: userData.name || userData.email.split('@')[0],
+            createdAt: new Date(userData.createdAt)
+          });
+        } catch (error) {
+          console.error('Token validation error:', error);
+          localStorage.removeItem('token');
+          setUser(null);
+        }
+      }
+      
+      setLoading(false);
     };
 
     initializeAuth();
   }, []);
 
-  const setUserFromSession = async (session: Session) => {
-    if (!session.user) return;
-
-    const { id, email, created_at } = session.user;
-    console.log("Setting user from session:", session.user);
-    
-    try {
-      // Get user profile data if it exists
-      const { data: profileData, error } = await supabase
-        .from('profiles')
-        .select('name')
-        .eq('id', id)
-        .single();
-      
-      if (error) {
-        console.error("Error fetching profile:", error);
-      }
-      
-      const user: User = {
-        id,
-        email: email || '',
-        name: profileData?.name || email?.split('@')[0] || '',
-        createdAt: new Date(created_at)
-      };
-      
-      console.log("User set:", user);
-      setUser(user);
-    } catch (error) {
-      console.error("Error in setUserFromSession:", error);
-    }
-  };
-
   const login = async (email: string, password: string) => {
     try {
       setLoading(true);
       
-      const { data, error } = await supabase.auth.signInWithPassword({
+      const response = await api.post('/auth/login', {
         email,
         password,
       });
-
-      if (error) {
-        // Special handling for email confirmation error
-        if (error.message.includes("Email not confirmed")) {
-          toast.error("Please confirm your email before logging in. Check your inbox for a verification link.");
-          
-          // Optionally resend confirmation email
-          await supabase.auth.resend({
-            type: 'signup',
-            email,
-          });
-          
-          toast.info("A new confirmation email has been sent to your inbox.");
-          throw new Error("Email not confirmed. Please check your inbox.");
-        } else {
-          throw error;
-        }
-      }
       
-      console.log("Login successful:", data);
+      const { token, user: userData } = response.data;
+      
+      // Store token in localStorage
+      localStorage.setItem('token', token);
+      
+      // Set user data
+      setUser({
+        id: userData.id,
+        email: userData.email,
+        name: userData.name || email.split('@')[0],
+        createdAt: new Date(userData.createdAt)
+      });
+      
       toast.success("Logged in successfully!");
       
     } catch (error: any) {
       console.error("Login error:", error);
-      toast.error(error.message || "Login failed. Please check your credentials.");
-      throw error;
+      
+      // Special handling for email confirmation error
+      if (error.response?.data?.needsConfirmation) {
+        toast.error("Please confirm your email before logging in. Check your inbox for a verification link.");
+        throw new Error("Email not confirmed. Please check your inbox.");
+      } else {
+        const errorMessage = error.response?.data?.error || "Login failed. Please check your credentials.";
+        toast.error(errorMessage);
+        throw new Error(errorMessage);
+      }
     } finally {
       setLoading(false);
     }
@@ -122,34 +87,21 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     try {
       setLoading(true);
       
-      // Create the auth user with auto-confirmation disabled
-      const { data, error } = await supabase.auth.signUp({
+      const response = await api.post('/auth/signup', {
         email,
         password,
-        options: {
-          data: {
-            name,
-          },
-          // Don't auto-confirm email - this relies on Supabase settings
-          emailRedirectTo: window.location.origin + '/login',
-        },
+        name,
       });
-
-      if (error) throw error;
       
-      console.log("Signup successful:", data);
+      console.log("Signup successful:", response.data);
       
-      // Check if email confirmation is required
-      if (data?.user && !data?.session) {
-        toast.success("Account created! Please check your email to confirm your account before logging in.");
-      } else {
-        toast.success("Account created successfully!");
-      }
+      toast.success("Account created! Please check your email to confirm your account before logging in.");
       
     } catch (error: any) {
       console.error("Signup error:", error);
-      toast.error(error.message || "Sign up failed. Please try again.");
-      throw error;
+      const errorMessage = error.response?.data?.error || "Sign up failed. Please try again.";
+      toast.error(errorMessage);
+      throw new Error(errorMessage);
     } finally {
       setLoading(false);
     }
@@ -159,9 +111,13 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     try {
       setLoading(true);
       
-      const { error } = await supabase.auth.signOut();
-      if (error) throw error;
+      // Call logout endpoint (optional)
+      await api.post('/auth/logout');
       
+      // Remove token from localStorage
+      localStorage.removeItem('token');
+      
+      // Clear user state
       setUser(null);
       toast.success("Logged out successfully!");
       
