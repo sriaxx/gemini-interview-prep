@@ -8,7 +8,7 @@ import { Loader2 } from "lucide-react";
 import Navbar from "@/components/Navbar";
 import Footer from "@/components/Footer";
 import { toast } from "sonner";
-import supabase from "@/lib/supabase";
+import api from "@/lib/api";
 
 const Login: React.FC = () => {
   const navigate = useNavigate();
@@ -65,17 +65,11 @@ const Login: React.FC = () => {
     
     setLoading(true);
     try {
-      const { error } = await supabase.auth.resend({
-        type: 'signup',
-        email: formData.email,
-      });
-      
-      if (error) throw error;
-      
-      toast.success("Confirmation email has been resent. Please check your inbox.");
+      const response = await api.post('/auth/resend-confirmation', { email: formData.email });
+      toast.success(response.data.message || "Confirmation email has been resent. Please check your inbox.");
     } catch (error: any) {
       console.error("Error resending confirmation:", error);
-      setErrorMsg(error.message || "Failed to resend confirmation email");
+      setErrorMsg(error.response?.data?.error || "Failed to resend confirmation email");
     } finally {
       setLoading(false);
     }
