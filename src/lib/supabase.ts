@@ -2,15 +2,15 @@
 import { createClient } from '@supabase/supabase-js';
 import { toast } from "sonner";
 
-const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
-const supabaseKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
+const supabaseUrl = "https://aldmwcycjcnxhivgweap.supabase.co";
+const supabaseKey = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImFsZG13Y3ljamNueGhpdmd3ZWFwIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDQwMTMzOTcsImV4cCI6MjA1OTU4OTM5N30.55a2-SFKUyGTWCi9KSgGqEbrEPWOteTO9nQ6dc65Wc0";
 
 // Check if the environment variables are defined
 if (!supabaseUrl || !supabaseKey) {
-  console.error("Supabase environment variables are not defined");
+  console.error("Supabase credentials are not defined");
   toast.error("API configuration error. Please check console for details.");
 }
 
-const supabase = createClient(supabaseUrl || '', supabaseKey || '');
+const supabase = createClient(supabaseUrl, supabaseKey);
 
 export default supabase;
