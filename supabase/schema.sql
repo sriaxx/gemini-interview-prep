@@ -18,7 +18,7 @@ create policy "Users can view their own profile" on profiles
 create policy "Users can update their own profile" on profiles
   for update using (auth.uid() = id);
 
--- Create policy to allow users to insert their own profile
+-- Create policy to allow authenticated users to insert their own profile
 create policy "Users can insert their own profile" on profiles
   for insert with check (auth.uid() = id);
 

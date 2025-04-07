@@ -94,6 +94,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     try {
       setLoading(true);
       
+      // First create the auth user
       const { data, error } = await supabase.auth.signUp({
         email,
         password,
@@ -106,20 +107,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
       if (error) throw error;
 
-      // Create a profile entry for the user
-      if (data.user) {
-        const { error: profileError } = await supabase
-          .from('profiles')
-          .insert([
-            { id: data.user.id, name, email },
-          ]);
-
-        if (profileError) {
-          console.error("Error creating profile:", profileError);
-        }
-      }
-
-      toast.success("Account created successfully! Please check your email for verification.");
+      // Success message
+      toast.success("Account created successfully!");
+      
+      // The profile will be created automatically via the database trigger
+      // No need to manually create the profile
       
     } catch (error: any) {
       toast.error(error.message || "Sign up failed. Please try again.");

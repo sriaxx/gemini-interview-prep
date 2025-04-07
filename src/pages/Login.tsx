@@ -17,6 +17,7 @@ const Login: React.FC = () => {
     email: "",
     password: ""
   });
+  const [errorMsg, setErrorMsg] = useState("");
 
   // Redirect if already authenticated
   React.useEffect(() => {
@@ -30,18 +31,22 @@ const Login: React.FC = () => {
       ...formData,
       [e.target.name]: e.target.value
     });
+    // Clear error message when user types
+    setErrorMsg("");
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
+    setErrorMsg("");
     
     try {
       await login(formData.email, formData.password);
       navigate("/dashboard");
-    } catch (error) {
+    } catch (error: any) {
       // Error toast is handled in the auth context
       console.error("Login error:", error);
+      setErrorMsg(error.message || "Login failed. Please check your credentials.");
     } finally {
       setLoading(false);
     }
@@ -85,6 +90,11 @@ const Login: React.FC = () => {
                   onChange={handleChange}
                 />
               </div>
+              {errorMsg && (
+                <div className="text-red-500 text-sm py-2">
+                  {errorMsg}
+                </div>
+              )}
             </div>
             <Button type="submit" className="w-full mt-6" disabled={loading}>
               {loading ? (
@@ -104,6 +114,9 @@ const Login: React.FC = () => {
               </p>
             </div>
           </form>
+          <div className="text-center mt-4 text-sm text-gray-500">
+            <p>For demo purposes, use the account you created during signup</p>
+          </div>
         </div>
       </div>
       <Footer />

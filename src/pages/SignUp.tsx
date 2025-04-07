@@ -20,6 +20,7 @@ const SignUp: React.FC = () => {
     confirmPassword: ""
   });
   const [passwordError, setPasswordError] = useState("");
+  const [generalError, setGeneralError] = useState("");
 
   // Redirect if already authenticated
   React.useEffect(() => {
@@ -38,6 +39,9 @@ const SignUp: React.FC = () => {
     if (e.target.name === "password" || e.target.name === "confirmPassword") {
       setPasswordError("");
     }
+    
+    // Clear general error when any field is changed
+    setGeneralError("");
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -49,14 +53,21 @@ const SignUp: React.FC = () => {
       return;
     }
     
+    // Email validation
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(formData.email)) {
+      setGeneralError("Please enter a valid email address");
+      return;
+    }
+    
     setLoading(true);
     
     try {
       await signup(formData.email, formData.password, formData.name);
       navigate("/dashboard");
-    } catch (error) {
-      // Error toast is handled in the auth context
+    } catch (error: any) {
       console.error("Signup error:", error);
+      setGeneralError(error.message || "Sign up failed. Please try again.");
     } finally {
       setLoading(false);
     }
@@ -130,6 +141,12 @@ const SignUp: React.FC = () => {
                   <p className="text-sm text-red-500 mt-1">{passwordError}</p>
                 )}
               </div>
+              
+              {generalError && (
+                <div className="text-red-500 text-sm py-2">
+                  {generalError}
+                </div>
+              )}
             </div>
             
             <Button type="submit" className="w-full mt-6" disabled={loading}>
@@ -151,9 +168,6 @@ const SignUp: React.FC = () => {
               </p>
             </div>
           </form>
-          <div className="text-center mt-4 text-sm text-gray-500">
-            <p>For demo purposes, any email/password will work</p>
-          </div>
         </div>
       </div>
       <Footer />
